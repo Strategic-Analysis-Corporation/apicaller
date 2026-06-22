@@ -82,12 +82,31 @@ test("redacts secret-like keys recursively", () => {
     redactSecrets({
       ok: "visible",
       token: "hidden",
+      webmasterId: "hidden",
       nested: [{ api_key: "hidden" }],
     }),
     {
       ok: "visible",
       token: "[redacted]",
+      webmasterId: "[redacted]",
       nested: [{ api_key: "[redacted]" }],
+    }
+  );
+});
+
+test("redacts configured secret values from strings", () => {
+  assert.deepEqual(
+    redactSecrets(
+      {
+        message:
+          "Request failed for https://example.com/data?apiKey=SECRET_VALUE_123",
+        nested: ["Bearer SECRET_VALUE_123"],
+      },
+      ["SECRET_VALUE_123"]
+    ),
+    {
+      message: "Request failed for https://example.com/data?apiKey=[redacted]",
+      nested: ["Bearer [redacted]"],
     }
   );
 });

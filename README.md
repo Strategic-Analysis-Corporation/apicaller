@@ -35,14 +35,29 @@ Open http://localhost:3000
 
 These go in `.env.local` locally, or in Vercel's dashboard for production. **Never commit real keys.**
 
-| Variable | Description |
-|----------|-------------|
-| `QM_TOKEN` | QuoteMedia Bearer token |
-| `QM_WEBMASTER_ID` | QuoteMedia webmaster ID |
-| `FISCAL_API_KEY` | Fiscal.ai API key |
-| `EODHD_API_TOKEN` | EODHD API token |
-| `FMP_API_KEY` | Financial Modeling Prep API key |
-| `NEXT_PUBLIC_PROVIDER_SUPPORT_EMAILS` | Optional semicolon-separated support recipients for issue-report email drafts, e.g. `FMP=support@example.com;Fiscal.ai=support@example.com`. Do not commit private aliases unless they are intentionally public. |
+In Vercel, create the vendor credentials as **Sensitive** environment variables for Production and Preview so users with project access cannot read the values after creation.
+
+| Variable | Description | Mark Sensitive in Vercel? |
+|----------|-------------|---------------------------|
+| `QM_TOKEN` | QuoteMedia Bearer token | Yes |
+| `QM_WEBMASTER_ID` | QuoteMedia webmaster ID | Yes |
+| `FISCAL_API_KEY` | Fiscal.ai API key | Yes |
+| `EODHD_API_TOKEN` | EODHD API token | Yes |
+| `FMP_API_KEY` | Financial Modeling Prep API key | Yes |
+| `NEXT_PUBLIC_PROVIDER_SUPPORT_EMAILS` | Optional semicolon-separated support recipients for issue-report email drafts, e.g. `FMP=support@example.com;Fiscal.ai=support@example.com`. Do not commit private aliases unless they are intentionally public. | No, intentionally public |
+
+## Securing Vercel Environment Variables
+
+If Vercel warns that API keys are visible to anyone with project access, the cause is that the keys were created as regular environment variables instead of Sensitive variables. The app code still keeps API calls server-side, but regular Vercel env vars can be viewed again by people with enough project access.
+
+For each vendor credential (`QM_TOKEN`, `QM_WEBMASTER_ID`, `FISCAL_API_KEY`, `EODHD_API_TOKEN`, `FMP_API_KEY`):
+
+1. Rotate the credential with the vendor if it has already been stored in Vercel as a regular env var.
+2. In Vercel, delete the existing regular env var.
+3. Re-add it for Production and Preview with the **Sensitive** switch enabled.
+4. Redeploy the app so the deployment uses the new sensitive values.
+
+Do not mark `NEXT_PUBLIC_PROVIDER_SUPPORT_EMAILS` sensitive. Anything with the `NEXT_PUBLIC_` prefix is bundled for browser use, so it must only contain intentionally public data.
 
 ## Provider Issue Reports
 
@@ -66,7 +81,7 @@ Generated issue files redact secret-like fields such as API keys, tokens, auth h
 
 3. Click **"Add New Project"** and import this repository
 
-4. In the **Environment Variables** section, add all 5 variables from the table above with the real values
+4. In the **Environment Variables** section, add the vendor credentials from the table above with the real values and the Sensitive switch enabled for Production and Preview
 
 5. Set the **Node.js Version** to `20.x` in Settings > General (if it doesn't auto-detect)
 

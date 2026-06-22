@@ -1,4 +1,5 @@
 import { Tab } from "./types";
+export { redactSecrets } from "./redaction";
 
 export interface ProviderIssueRecipient {
   provider: string;
@@ -21,14 +22,6 @@ export interface IssueReport {
   mailtoHref: string;
   baseFilename: string;
   files: IssueReportFile[];
-}
-
-const REDACTED = "[redacted]";
-const SECRET_KEY_PATTERN =
-  /(api[-_ ]?key|apikey|token|secret|authorization|cookie|password|bearer|credential)/i;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 export function sanitizeFilenamePart(value: string): string {
@@ -59,23 +52,6 @@ export function parseProviderSupportEmails(
     }
     return acc;
   }, {});
-}
-
-export function redactSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(redactSecrets);
-  }
-
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entryValue]) => [
-      key,
-      SECRET_KEY_PATTERN.test(key) ? REDACTED : redactSecrets(entryValue),
-    ])
-  );
 }
 
 function getPrimaryEntity(params: Record<string, string>): string {

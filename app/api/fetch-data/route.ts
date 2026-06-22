@@ -17,6 +17,7 @@ import {
   buildFiscalFinancialsParams,
   buildFiscalStandardizedMetricsListParams,
 } from '@/lib/fiscal';
+import { redactSecrets } from '@/lib/redaction';
 
 // Types for the request body
 interface FetchDataRequest {
@@ -64,6 +65,23 @@ async function fetchWithTimeout(
   }
 }
 
+function getConfiguredSecretValues(): string[] {
+  return [
+    process.env.QM_TOKEN,
+    process.env.QM_WEBMASTER_ID,
+    process.env.FISCAL_API_KEY,
+    process.env.EODHD_API_TOKEN,
+    process.env.FMP_API_KEY,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function safeJson(data: unknown, init?: ResponseInit): NextResponse {
+  return NextResponse.json(
+    redactSecrets(data, getConfiguredSecretValues()),
+    init
+  );
+}
+
 // API call implementations
 async function handleQuoteMediaCall(
   callId: string,
@@ -73,7 +91,7 @@ async function handleQuoteMediaCall(
   const webmasterId = process.env.QM_WEBMASTER_ID;
 
   if (!token || !webmasterId) {
-    return NextResponse.json(
+    return safeJson(
       { error: 'QuoteMedia API credentials not configured' },
       { status: 500 }
     );
@@ -93,7 +111,7 @@ async function handleQuoteMediaCall(
       const endYear = params.end_year as string;
 
       if (!symbol || !startYear || !endYear) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: symbol, start_year, end_year' },
           { status: 400 }
         );
@@ -116,7 +134,7 @@ async function handleQuoteMediaCall(
       const numberOfReports = params.number_of_reports as string | undefined;
 
       if (!symbol || !reportType) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: symbol, report_type' },
           { status: 400 }
         );
@@ -138,7 +156,7 @@ async function handleQuoteMediaCall(
       const endDate = params.end_date as string;
 
       if (!symbol) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: symbol' },
           { status: 400 }
         );
@@ -158,14 +176,14 @@ async function handleQuoteMediaCall(
       const exchangeGroup = params.exchange_group as string;
 
       if (!exchangeGroup) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: exchange_group' },
           { status: 400 }
         );
       }
 
       if (!getQuoteMediaExchangeGroup(exchangeGroup)) {
-        return NextResponse.json(
+        return safeJson(
           { error: `Unsupported QuoteMedia exchange group: ${exchangeGroup}` },
           { status: 400 }
         );
@@ -186,14 +204,14 @@ async function handleQuoteMediaCall(
       });
 
       const data = await response.json();
-      return NextResponse.json(data, { status: response.ok ? 200 : response.status });
+      return safeJson(data, { status: response.ok ? 200 : response.status });
     }
 
     case 'qm_earnings_estimates_old': {
       const symbol = params.symbol as string;
 
       if (!symbol) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: symbol' },
           { status: 400 }
         );
@@ -212,7 +230,7 @@ async function handleQuoteMediaCall(
       const symbol = params.symbol as string;
 
       if (!symbol) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: symbol' },
           { status: 400 }
         );
@@ -230,7 +248,7 @@ async function handleQuoteMediaCall(
       const symbol = params.symbol as string;
 
       if (!symbol) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: symbol' },
           { status: 400 }
         );
@@ -243,7 +261,7 @@ async function handleQuoteMediaCall(
     }
 
     default:
-      return NextResponse.json(
+      return safeJson(
         { error: `Unknown QuoteMedia callId: ${callId}` },
         { status: 400 }
       );
@@ -258,15 +276,15 @@ async function handleQuoteMediaCall(
 
     const data = await response.json();
     // Pass through the response even on error status — the body has useful error details
-    return NextResponse.json(data, { status: response.ok ? 200 : response.status });
+    return safeJson(data, { status: response.ok ? 200 : response.status });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return NextResponse.json(
+      return safeJson(
         { error: 'Request timeout — the API took too long to respond' },
         { status: 504 }
       );
     }
-    return NextResponse.json(
+    return safeJson(
       { error: `QuoteMedia request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
@@ -280,7 +298,7 @@ async function handleFiscalAiCall(
   const apiKey = process.env.FISCAL_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json(
+    return safeJson(
       { error: 'Fiscal.ai API key not configured' },
       { status: 500 }
     );
@@ -299,7 +317,7 @@ async function handleFiscalAiCall(
         : { detail: await response.text() };
 
       if (!response.ok) {
-        return NextResponse.json(
+        return safeJson(
           {
             error: `Fiscal.ai API error: ${response.statusText || response.status}`,
             detail: data,
@@ -308,15 +326,15 @@ async function handleFiscalAiCall(
         );
       }
 
-      return NextResponse.json(data);
+      return safeJson(data);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Request timeout' },
           { status: 504 }
         );
       }
-      return NextResponse.json(
+      return safeJson(
         { error: `Fiscal.ai request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
         { status: 500 }
       );
@@ -410,7 +428,7 @@ async function handleFiscalAiCall(
       const ratioId = String(params.ratio_id || "").trim();
 
       if (!companyKey || !periodType || !currency || !ratioId) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: company_key, period_type, currency, ratio_id' },
           { status: 400 }
         );
@@ -432,7 +450,7 @@ async function handleFiscalAiCall(
       const ratioId = String(params.ratio_id || "").trim();
 
       if (!companyKey || !ratioId) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: company_key, ratio_id' },
           { status: 400 }
         );
@@ -466,7 +484,7 @@ async function handleFiscalAiCall(
         !isValidLooseIdentifier(periodType) ||
         !isFiscalStatementType(statementType)
       ) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing or invalid params: ticker, exchange, statement_type, period_type, limit' },
           { status: 400 }
         );
@@ -502,7 +520,7 @@ async function handleFiscalAiCall(
         !isValidLooseIdentifier(exchange) ||
         !isValidLooseIdentifier(periodType)
       ) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing or invalid params: ticker, exchange, period_type, limit' },
           { status: 400 }
         );
@@ -533,7 +551,7 @@ async function handleFiscalAiCall(
       };
 
       if (failedSections.length === sections.length) {
-        return NextResponse.json(
+        return safeJson(
           {
             ...bundle,
             error: `Fiscal.ai workbook failed: ${failedSections
@@ -544,7 +562,7 @@ async function handleFiscalAiCall(
         );
       }
 
-      return NextResponse.json(bundle);
+      return safeJson(bundle);
     }
 
     case 'fiscal_companies_list': {
@@ -552,7 +570,7 @@ async function handleFiscalAiCall(
       const pageSize = clampPageSize(String(params.page_size || "1000").trim());
 
       if (!/^\d+$/.test(pageNumber)) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'page_number must be a positive integer' },
           { status: 400 }
         );
@@ -583,7 +601,7 @@ async function handleFiscalAiCall(
         !isValidLooseIdentifier(reportFormat) ||
         !isFiscalStatementType(statementType)
       ) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing or invalid params: report_format, statement_type' },
           { status: 400 }
         );
@@ -595,7 +613,7 @@ async function handleFiscalAiCall(
     }
 
     default:
-      return NextResponse.json(
+      return safeJson(
         { error: `Unknown Fiscal.ai callId: ${callId}` },
         { status: 400 }
       );
@@ -609,7 +627,7 @@ async function handleEODHDCall(
   const token = process.env.EODHD_API_TOKEN;
 
   if (!token) {
-    return NextResponse.json(
+    return safeJson(
       { error: 'EODHD API token not configured' },
       { status: 500 }
     );
@@ -622,7 +640,7 @@ async function handleEODHDCall(
       const ticker = params.ticker as string;
 
       if (!ticker || !isValidSymbol(ticker)) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing or invalid ticker (e.g. RY.TO, MSFT.US)' },
           { status: 400 }
         );
@@ -641,7 +659,7 @@ async function handleEODHDCall(
       const ticker = params.ticker as string;
 
       if (!ticker || !isValidSymbol(ticker)) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing or invalid ticker (e.g. RY.TO, MSFT.US)' },
           { status: 400 }
         );
@@ -657,7 +675,7 @@ async function handleEODHDCall(
     }
 
     default:
-      return NextResponse.json(
+      return safeJson(
         { error: `Unknown EODHD callId: ${callId}` },
         { status: 400 }
       );
@@ -670,22 +688,22 @@ async function handleEODHDCall(
     });
 
     if (!response.ok) {
-      return NextResponse.json(
+      return safeJson(
         { error: `EODHD API error: ${response.statusText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return safeJson(data);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return NextResponse.json(
+      return safeJson(
         { error: 'Request timeout' },
         { status: 504 }
       );
     }
-    return NextResponse.json(
+    return safeJson(
       { error: `EODHD request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
@@ -699,7 +717,7 @@ async function handleFMPCall(
   const apiKey = process.env.FMP_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json(
+    return safeJson(
       { error: 'FMP API key not configured' },
       { status: 500 }
     );
@@ -713,7 +731,7 @@ async function handleFMPCall(
       const period = params.period as string;
 
       if (!symbol || !period) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: symbol, period' },
           { status: 400 }
         );
@@ -734,7 +752,7 @@ async function handleFMPCall(
       const period = params.period as string;
 
       if (!symbol || !period) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required params: symbol, period' },
           { status: 400 }
         );
@@ -754,7 +772,7 @@ async function handleFMPCall(
       const query = params.query as string;
 
       if (!query) {
-        return NextResponse.json(
+        return safeJson(
           { error: 'Missing required param: query' },
           { status: 400 }
         );
@@ -770,7 +788,7 @@ async function handleFMPCall(
     }
 
     default:
-      return NextResponse.json(
+      return safeJson(
         { error: `Unknown FMP callId: ${callId}` },
         { status: 400 }
       );
@@ -783,22 +801,22 @@ async function handleFMPCall(
     });
 
     if (!response.ok) {
-      return NextResponse.json(
+      return safeJson(
         { error: `FMP API error: ${response.statusText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    return safeJson(data);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return NextResponse.json(
+      return safeJson(
         { error: 'Request timeout' },
         { status: 504 }
       );
     }
-    return NextResponse.json(
+    return safeJson(
       { error: `FMP request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
@@ -898,14 +916,14 @@ async function handleChartsCall(
 ): Promise<NextResponse> {
   const token = process.env.EODHD_API_TOKEN;
   if (!token) {
-    return NextResponse.json(
+    return safeJson(
       { error: "EODHD API token not configured" },
       { status: 500 }
     );
   }
 
   if (callId !== "price_history_rebased") {
-    return NextResponse.json(
+    return safeJson(
       { error: `Unknown Charts callId: ${callId}` },
       { status: 400 }
     );
@@ -924,33 +942,33 @@ async function handleChartsCall(
     .filter(Boolean);
 
   if (tickers.length === 0) {
-    return NextResponse.json(
+    return safeJson(
       { error: "At least one ticker is required" },
       { status: 400 }
     );
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-    return NextResponse.json(
+    return safeJson(
       { error: "start_date must be YYYY-MM-DD" },
       { status: 400 }
     );
   }
   const endDate = endDateInput || yesterdayIso();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-    return NextResponse.json(
+    return safeJson(
       { error: "end_date must be YYYY-MM-DD or blank" },
       { status: 400 }
     );
   }
   if (endDate < startDate) {
-    return NextResponse.json(
+    return safeJson(
       { error: `end_date (${endDate}) is before start_date (${startDate})` },
       { status: 400 }
     );
   }
   for (const t of tickers) {
     if (!isValidSymbol(t)) {
-      return NextResponse.json(
+      return safeJson(
         { error: `Invalid ticker: ${t}` },
         { status: 400 }
       );
@@ -984,7 +1002,7 @@ async function handleChartsCall(
     const failedMessage = failed
       .map((f) => `${f.ticker} (${f.error})`)
       .join(", ");
-    return NextResponse.json(
+    return safeJson(
       {
         error: failedMessage
           ? `No data retrieved for any ticker: ${failedMessage}`
@@ -1017,7 +1035,7 @@ async function handleChartsCall(
         : aligned;
   }
 
-  return NextResponse.json({
+  return safeJson({
     chartData: {
       tickers: succeeded.map((s) => s.ticker),
       startDate,
@@ -1038,7 +1056,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Validate required fields
     if (!platformId || !callId || !params) {
-      return NextResponse.json(
+      return safeJson(
         { error: 'Missing required fields: platformId, callId, params' },
         { status: 400 }
       );
@@ -1062,20 +1080,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return await handleChartsCall(callId, params);
 
       default:
-        return NextResponse.json(
+        return safeJson(
           { error: `Unknown platformId: ${platformId}` },
           { status: 400 }
         );
     }
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json(
+      return safeJson(
         { error: 'Invalid JSON in request body' },
         { status: 400 }
       );
     }
 
-    return NextResponse.json(
+    return safeJson(
       { error: `Server error: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
