@@ -22,6 +22,16 @@
 # production
 /build
 
+# generated API Caller exports / issue-report packages
+api-issue-report*
+*_issue-summary.md
+*_api-request.json
+*_api-response.json
+*_api-response.xlsx
+*_diagnostics.json
+*.local-export.json
+*.local-export.xlsx
+
 # misc
 .DS_Store
 *.pem

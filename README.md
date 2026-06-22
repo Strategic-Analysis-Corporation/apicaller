@@ -9,6 +9,8 @@ Web-based financial API explorer for SAC analysts. Calls QuoteMedia, Fiscal.ai, 
 - Sortable columns, newest-first ordering
 - Excel and JSON export
 - Tabbed results with error diagnostics
+- Split-screen tab comparison
+- Provider issue reporting with email drafts and generated attachment files
 - API keys stay server-side (never sent to the browser)
 
 ## Local Development
@@ -40,6 +42,19 @@ These go in `.env.local` locally, or in Vercel's dashboard for production. **Nev
 | `FISCAL_API_KEY` | Fiscal.ai API key |
 | `EODHD_API_TOKEN` | EODHD API token |
 | `FMP_API_KEY` | Financial Modeling Prep API key |
+| `NEXT_PUBLIC_PROVIDER_SUPPORT_EMAILS` | Optional semicolon-separated support recipients for issue-report email drafts, e.g. `FMP=support@example.com;Fiscal.ai=support@example.com`. Do not commit private aliases unless they are intentionally public. |
+
+## Provider Issue Reports
+
+Each result tab has a **Report Data Issue** action. It can open a prefilled mail client draft and generate attachment files for manual email workflows:
+
+- issue summary markdown
+- request metadata JSON
+- diagnostics JSON
+- raw API response JSON
+- Excel workbook when table data is available
+
+Generated issue files redact secret-like fields such as API keys, tokens, auth headers, cookies, and passwords before download.
 
 ## Deploy to Vercel
 

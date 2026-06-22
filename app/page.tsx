@@ -11,6 +11,11 @@ import JsonView from "@/components/JsonView";
 import TableView from "@/components/TableView";
 import ChartView from "@/components/ChartView";
 import ExportButtons from "@/components/ExportButtons";
+import IssueReportButton from "@/components/IssueReportButton";
+import {
+  isFiscalStandardizedFinancialsWorkbook,
+  type FiscalStandardizedFinancialsWorkbook,
+} from "@/lib/fiscal";
 import {
   QUOTEMEDIA_ENHANCED_FINANCIALS_BUNDLE_TYPE,
   QUOTEMEDIA_ENHANCED_REPORT_TYPES,
@@ -24,6 +29,8 @@ interface PartialFailure {
   ticker: string;
   error: string;
 }
+
+type ViewMode = "json" | "table" | "chart";
 
 function extractPartialFailures(data: unknown): PartialFailure[] {
   if (!data || typeof data !== "object") return [];
@@ -97,13 +104,211 @@ function EnhancedFinancialsBundleNotice({
   );
 }
 
+function FiscalWorkbookNotice({
+  bundle,
+}: {
+  bundle: FiscalStandardizedFinancialsWorkbook;
+}) {
+  return (
+    <div className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+      <div className="flex flex-wrap gap-2">
+        {bundle.sections.map((section) => {
+          const className =
+            section.status === "fulfilled"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-red-200 bg-red-50 text-red-800";
+          const text =
+            section.status === "fulfilled"
+              ? `${section.label}: ready`
+              : `${section.label}: ${section.error || "failed"}`;
+
+          return (
+            <span
+              key={section.statementType}
+              className={`rounded border px-2 py-1 ${className}`}
+            >
+              {text}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function tabHasChart(tab: Tab | undefined): boolean {
+  const d = tab?.data;
+  return !!(d && typeof d === "object" && (d as { chartData?: unknown }).chartData);
+}
+
+function ViewModeControls({
+  tab,
+  viewMode,
+  onChange,
+}: {
+  tab: Tab | undefined;
+  viewMode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      {tabHasChart(tab) && (
+        <button
+          onClick={() => onChange("chart")}
+          className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
+            viewMode === "chart"
+              ? "bg-blue-100 text-blue-700"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          Chart
+        </button>
+      )}
+      <button
+        onClick={() => onChange("json")}
+        className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
+          viewMode === "json"
+            ? "bg-blue-100 text-blue-700"
+            : "text-gray-600 hover:bg-gray-100"
+        }`}
+      >
+        JSON
+      </button>
+      <button
+        onClick={() => onChange("table")}
+        className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
+          viewMode === "table"
+            ? "bg-blue-100 text-blue-700"
+            : "text-gray-600 hover:bg-gray-100"
+        }`}
+      >
+        Table
+      </button>
+    </div>
+  );
+}
+
+function TabContent({
+  tab,
+  viewMode,
+  onViewModeChange,
+}: {
+  tab: Tab;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
+}) {
+  const failures = extractPartialFailures(tab.data);
+  const enhancedBundle = isQuoteMediaEnhancedFinancialsBundle(tab.data)
+    ? tab.data
+    : null;
+  const fiscalWorkbook = isFiscalStandardizedFinancialsWorkbook(tab.data)
+    ? tab.data
+    : null;
+
+  if (tab.loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3 text-gray-500">
+          <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-sm">Fetching data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (tab.error && viewMode !== "json") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-5">
+          <div className="flex items-start gap-3">
+            <span className="text-red-500 text-lg mt-0.5">!</span>
+            <div className="flex-1">
+              <p className="font-semibold text-red-800">Request Failed</p>
+              <p className="text-sm text-red-700 mt-1">{tab.error}</p>
+            </div>
+            {tab.httpStatus && (
+              <span className="shrink-0 px-2 py-1 bg-red-100 text-red-700 text-xs font-mono rounded">
+                HTTP {tab.httpStatus}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
+          <p className="font-semibold text-gray-800 text-sm mb-3">Diagnostics</p>
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            <span className="text-gray-500">Platform</span>
+            <span className="font-mono text-gray-900">{tab.platform}</span>
+            <span className="text-gray-500">Call</span>
+            <span className="font-mono text-gray-900">{tab.callName}</span>
+            <span className="text-gray-500">Call ID</span>
+            <span className="font-mono text-gray-900">{tab.callId}</span>
+            {Object.entries(tab.params).map(([k, v]) => (
+              <Fragment key={k}>
+                <span className="text-gray-500">{k}</span>
+                <span className="font-mono text-gray-900">
+                  {v || <span className="text-gray-400">(empty)</span>}
+                </span>
+              </Fragment>
+            ))}
+          </div>
+          {tab.data != null && (
+            <div className="mt-4">
+              <button
+                onClick={() => onViewModeChange("json")}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                View raw API response
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (viewMode === "json") {
+    return <JsonView data={tab.data} />;
+  }
+
+  if (viewMode === "chart") {
+    return (
+      <ChartView
+        data={tab.data}
+        filename={`${tab.platform}_${tab.callName}_${new Date().toISOString().split("T")[0]}`}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {failures.length > 0 && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Partial data returned:{" "}
+          {failures.map((f) => `${f.ticker} (${f.error})`).join(", ")}
+        </div>
+      )}
+      {enhancedBundle && (
+        <EnhancedFinancialsBundleNotice bundle={enhancedBundle} />
+      )}
+      {fiscalWorkbook && <FiscalWorkbookNotice bundle={fiscalWorkbook} />}
+      <TableView data={tab.data} />
+    </div>
+  );
+}
+
 export default function Home() {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"json" | "table" | "chart">("table");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [splitTabId, setSplitTabId] = useState<string | null>(null);
+  const [splitViewMode, setSplitViewMode] = useState<ViewMode>("table");
 
   const platform = useMemo(
     () => PLATFORMS.find((p) => p.name === selectedPlatform),
@@ -120,22 +325,9 @@ export default function Home() {
     [tabs, activeTabId]
   );
 
-  const activeHasChart = useMemo(() => {
-    const d = activeTab?.data;
-    return !!(d && typeof d === "object" && (d as { chartData?: unknown }).chartData);
-  }, [activeTab]);
-
-  const activeFailures = useMemo(
-    () => extractPartialFailures(activeTab?.data),
-    [activeTab]
-  );
-
-  const activeEnhancedBundle = useMemo(
-    () =>
-      isQuoteMediaEnhancedFinancialsBundle(activeTab?.data)
-        ? activeTab.data
-        : null,
-    [activeTab]
+  const splitTab = useMemo(
+    () => tabs.find((t) => t.id === splitTabId),
+    [tabs, splitTabId]
   );
 
   const anyLoading = tabs.some((t) => t.loading);
@@ -410,20 +602,28 @@ export default function Home() {
   const handleSelectTab = (id: string) => {
     setActiveTabId(id);
     const tab = tabs.find((t) => t.id === id);
-    const hasChart = !!(
-      tab?.data &&
-      typeof tab.data === "object" &&
-      (tab.data as { chartData?: unknown }).chartData
-    );
-    if (hasChart) setViewMode("chart");
+    if (tabHasChart(tab)) setViewMode("chart");
     else if (viewMode === "chart") setViewMode("table");
+
+    if (splitTabId === id) {
+      const replacement = tabs.find((t) => t.id !== id);
+      setSplitTabId(replacement?.id || null);
+      setSplitViewMode(tabHasChart(replacement) ? "chart" : "table");
+    }
   };
 
   const handleCloseTab = (id: string) => {
+    const remaining = tabs.filter((t) => t.id !== id);
     setTabs((prev) => prev.filter((t) => t.id !== id));
     if (activeTabId === id) {
-      const remaining = tabs.filter((t) => t.id !== id);
-      setActiveTabId(remaining[remaining.length - 1]?.id || null);
+      const nextActiveId = remaining[remaining.length - 1]?.id || null;
+      setActiveTabId(nextActiveId);
+      if (nextActiveId && splitTabId === nextActiveId) {
+        setSplitTabId(null);
+      }
+    }
+    if (splitTabId === id) {
+      setSplitTabId(null);
     }
   };
 
@@ -502,132 +702,101 @@ export default function Home() {
             />
 
             {/* View Toggle & Export */}
-            <div className="border-b border-gray-200 bg-white px-6 py-3 flex items-center gap-3">
-              <div className="flex gap-2">
-                {activeHasChart && (
-                  <button
-                    onClick={() => setViewMode("chart")}
-                    className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
-                      viewMode === "chart"
-                        ? "bg-blue-100 text-blue-700"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    Chart
-                  </button>
-                )}
-                <button
-                  onClick={() => setViewMode("json")}
-                  className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
-                    viewMode === "json"
-                      ? "bg-blue-100 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  JSON
-                </button>
-                <button
-                  onClick={() => setViewMode("table")}
-                  className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
-                    viewMode === "table"
-                      ? "bg-blue-100 text-blue-700"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  Table
-                </button>
-              </div>
+            <div className="border-b border-gray-200 bg-white px-6 py-3 flex flex-wrap items-center gap-3">
+              <ViewModeControls
+                tab={activeTab}
+                viewMode={viewMode}
+                onChange={setViewMode}
+              />
               {activeTab && (
-                <ExportButtons
-                  data={activeTab.data}
-                  filename={`${activeTab.platform}_${activeTab.callName}_${new Date().toISOString().split("T")[0]}`}
-                />
+                <>
+                  <ExportButtons
+                    data={activeTab.data}
+                    filename={`${activeTab.platform}_${activeTab.callName}_${new Date().toISOString().split("T")[0]}`}
+                  />
+                  <IssueReportButton tab={activeTab} />
+                </>
               )}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (splitTabId) {
+                      setSplitTabId(null);
+                    } else {
+                      const candidate = tabs.find((t) => t.id !== activeTabId);
+                      setSplitTabId(candidate?.id || null);
+                      setSplitViewMode(tabHasChart(candidate) ? "chart" : "table");
+                    }
+                  }}
+                  disabled={tabs.length < 2}
+                  className="px-3 py-1 text-sm font-medium rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {splitTabId ? "Exit Split" : "Split View"}
+                </button>
+                {splitTabId && (
+                  <select
+                    value={splitTabId}
+                    onChange={(event) => {
+                      const nextTab = tabs.find((t) => t.id === event.target.value);
+                      setSplitTabId(event.target.value);
+                      setSplitViewMode(tabHasChart(nextTab) ? "chart" : "table");
+                    }}
+                    className="max-w-64 rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {tabs
+                      .filter((tab) => tab.id !== activeTabId)
+                      .map((tab) => (
+                        <option key={tab.id} value={tab.id}>
+                          {tab.label}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             {/* Content Area */}
             <div className="flex-1 overflow-auto p-6">
               {activeTab ? (
-                activeTab.loading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="flex flex-col items-center gap-3 text-gray-500">
-                      <svg className="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span className="text-sm">Fetching data...</span>
-                    </div>
-                  </div>
-                ) : activeTab.error && viewMode !== "json" ? (
-                  <div className="flex flex-col gap-4">
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-5">
-                      <div className="flex items-start gap-3">
-                        <span className="text-red-500 text-lg mt-0.5">!</span>
-                        <div className="flex-1">
-                          <p className="font-semibold text-red-800">Request Failed</p>
-                          <p className="text-sm text-red-700 mt-1">{activeTab.error}</p>
-                        </div>
-                        {activeTab.httpStatus && (
-                          <span className="shrink-0 px-2 py-1 bg-red-100 text-red-700 text-xs font-mono rounded">
-                            HTTP {activeTab.httpStatus}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Diagnostics */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-                      <p className="font-semibold text-gray-800 text-sm mb-3">Diagnostics</p>
-                      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-                        <span className="text-gray-500">Platform</span>
-                        <span className="font-mono text-gray-900">{activeTab.platform}</span>
-                        <span className="text-gray-500">Call</span>
-                        <span className="font-mono text-gray-900">{activeTab.callName}</span>
-                        <span className="text-gray-500">Call ID</span>
-                        <span className="font-mono text-gray-900">{activeTab.callId}</span>
-                        {Object.entries(activeTab.params).map(([k, v]) => (
-                          <Fragment key={k}>
-                            <span className="text-gray-500">{k}</span>
-                            <span className="font-mono text-gray-900">{v || <span className="text-gray-400">(empty)</span>}</span>
-                          </Fragment>
-                        ))}
-                      </div>
-                      {activeTab.data != null && (
-                        <div className="mt-4">
-                          <button
-                            onClick={() => setViewMode("json")}
-                            className="text-sm text-blue-600 hover:text-blue-800 underline"
-                          >
-                            View raw API response
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : viewMode === "json" ? (
-                  <JsonView data={activeTab.data} />
-                ) : viewMode === "chart" ? (
-                  <ChartView
-                    data={activeTab.data}
-                    filename={`${activeTab.platform}_${activeTab.callName}_${new Date().toISOString().split("T")[0]}`}
-                  />
-                ) : (
-                  <div className="flex flex-col gap-4">
-                    {activeFailures.length > 0 && (
-                      <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        Partial data returned:{" "}
-                        {activeFailures
-                          .map((f) => `${f.ticker} (${f.error})`)
-                          .join(", ")}
-                      </div>
-                    )}
-                    {activeEnhancedBundle && (
-                      <EnhancedFinancialsBundleNotice
-                        bundle={activeEnhancedBundle}
+                splitTab ? (
+                  <div className="grid min-h-full grid-cols-1 gap-6 xl:grid-cols-2">
+                    <div className="min-w-0">
+                      <TabContent
+                        tab={activeTab}
+                        viewMode={viewMode}
+                        onViewModeChange={setViewMode}
                       />
-                    )}
-                    <TableView data={activeTab.data} />
+                    </div>
+                    <div className="min-w-0 border-t border-gray-200 pt-4 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+                      <div className="mb-4 flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">
+                          Compare
+                        </span>
+                        <ViewModeControls
+                          tab={splitTab}
+                          viewMode={splitViewMode}
+                          onChange={setSplitViewMode}
+                        />
+                        <ExportButtons
+                          data={splitTab.data}
+                          filename={`${splitTab.platform}_${splitTab.callName}_${new Date().toISOString().split("T")[0]}`}
+                        />
+                        <IssueReportButton tab={splitTab} />
+                      </div>
+                      <TabContent
+                        tab={splitTab}
+                        viewMode={splitViewMode}
+                        onViewModeChange={setSplitViewMode}
+                      />
+                    </div>
                   </div>
+                ) : (
+                  <TabContent
+                    tab={activeTab}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                  />
                 )
               ) : null}
             </div>

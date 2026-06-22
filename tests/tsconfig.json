@@ -10,5 +10,12 @@
     "outDir": "../.test-build",
     "types": ["node"]
   },
-  "include": ["../lib/tableData.ts", "./**/*.test.ts"]
+  "include": [
+    "../lib/fiscal.ts",
+    "../lib/issueReport.ts",
+    "../lib/quotemedia.ts",
+    "../lib/tableData.ts",
+    "../lib/types.ts",
+    "./**/*.test.ts"
+  ]
 }
