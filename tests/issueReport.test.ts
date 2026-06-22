@@ -34,7 +34,7 @@ test("parses provider support email configuration", () => {
   assert.equal(parsed["Fiscal.ai"], "fiscal@example.com");
 });
 
-test("builds a provider issue report with mailto draft and attachment files", () => {
+test("builds a provider issue report with mailto draft and one summary file", () => {
   const report = buildIssueReport({
     tab,
     issueDescription: "Revenue estimate looks stale.",
@@ -45,18 +45,24 @@ test("builds a provider issue report with mailto draft and attachment files", ()
   assert.equal(report.recipient, "fmp@example.com");
   assert.equal(report.subject, "Data Issue - FMP - Analyst Estimates - AAPL");
   assert.match(report.mailtoHref, /^mailto:fmp@example.com\?/);
+  assert.match(report.mailtoHref, /subject=Data%20Issue%20-%20FMP/);
+  assert.doesNotMatch(report.mailtoHref, /\+/);
+  assert.equal(report.body.split("\n")[0], "API Issue Context");
+  assert.match(report.body, /^API Issue Context\n\nIssue summary:/);
+  assert.doesNotMatch(report.body, /^Hello,/);
+  assert.doesNotMatch(report.body, /attachment files/i);
   assert.match(report.body, /Revenue estimate looks stale/);
   assert.deepEqual(
     report.files.map((file) => file.filename),
     [
       "FMP_Analyst_Estimates_AAPL_2026-06-22_issue-summary.md",
-      "FMP_Analyst_Estimates_AAPL_2026-06-22_api-request.json",
-      "FMP_Analyst_Estimates_AAPL_2026-06-22_diagnostics.json",
-      "FMP_Analyst_Estimates_AAPL_2026-06-22_api-response.json",
     ]
   );
-  assert.doesNotMatch(report.files[3].contents, /SHOULD_NOT_APPEAR/);
-  assert.doesNotMatch(report.files[3].contents, /Bearer token/);
+  assert.match(report.files[0].contents, /# API Issue Context/);
+  assert.match(report.files[0].contents, /- API call: Analyst Estimates/);
+  assert.match(report.files[0].contents, /- Queried entity: AAPL/);
+  assert.doesNotMatch(report.files[0].contents, /Attachments/);
+  assert.doesNotMatch(report.files[0].contents, /api-response\.json/);
 });
 
 test("builds issue package without a configured recipient", () => {
@@ -68,7 +74,7 @@ test("builds issue package without a configured recipient", () => {
 
   assert.equal(report.recipient, undefined);
   assert.match(report.mailtoHref, /^mailto:\?/);
-  assert.match(report.files[2].contents, /"recipientConfigured": false/);
+  assert.equal(report.files.length, 1);
 });
 
 test("redacts secret-like keys recursively", () => {

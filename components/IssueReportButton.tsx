@@ -7,7 +7,6 @@ import {
   parseProviderSupportEmails,
   type IssueReportFile,
 } from "@/lib/issueReport";
-import { downloadWorkbook, hasWorkbookTables } from "@/lib/excelExport";
 
 interface IssueReportButtonProps {
   tab: Tab;
@@ -39,22 +38,15 @@ export default function IssueReportButton({ tab }: IssueReportButtonProps) {
       }),
     [tab, issueDescription, providerRecipients]
   );
-  const canDownloadWorkbook = hasWorkbookTables(tab.data);
+  const issueSummaryFile = report.files[0];
 
   const handleOpenDraft = () => {
     window.location.href = report.mailtoHref;
   };
 
-  const handleDownloadPackage = () => {
-    report.files.forEach((file, index) => {
-      window.setTimeout(() => downloadTextFile(file), index * 150);
-    });
-
-    if (canDownloadWorkbook) {
-      window.setTimeout(
-        () => downloadWorkbook(tab.data, `${report.baseFilename}_api-response`),
-        report.files.length * 150
-      );
+  const handleDownloadIssueSummary = () => {
+    if (issueSummaryFile) {
+      downloadTextFile(issueSummaryFile);
     }
   };
 
@@ -93,8 +85,8 @@ export default function IssueReportButton({ tab }: IssueReportButtonProps) {
 
             <div className="space-y-4 px-5 py-4">
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Generated files include request metadata, diagnostics, and the visible API response.
-                API keys, auth headers, cookies, and secret-like fields are redacted before download.
+                The downloaded summary includes the issue text, API call details, and parameters.
+                It does not attach files to the email draft automatically.
               </div>
 
               <div className="grid gap-3 text-sm md:grid-cols-2">
@@ -138,16 +130,11 @@ export default function IssueReportButton({ tab }: IssueReportButtonProps) {
 
               <div>
                 <span className="block text-sm font-medium text-gray-900 mb-2">
-                  Attachment Files
+                  Download File
                 </span>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                   <ul className="list-disc pl-5">
-                    {report.files.map((file) => (
-                      <li key={file.filename}>{file.filename}</li>
-                    ))}
-                    {canDownloadWorkbook && (
-                      <li>{report.baseFilename}_api-response.xlsx</li>
-                    )}
+                    {issueSummaryFile && <li>{issueSummaryFile.filename}</li>}
                   </ul>
                 </div>
               </div>
@@ -162,10 +149,10 @@ export default function IssueReportButton({ tab }: IssueReportButtonProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={handleDownloadPackage}
+                  onClick={handleDownloadIssueSummary}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                 >
-                  Download Email Package
+                  Download Issue Summary
                 </button>
               </div>
             </div>

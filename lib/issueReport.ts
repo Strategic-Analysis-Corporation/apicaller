@@ -78,10 +78,6 @@ export function redactSecrets(value: unknown): unknown {
   );
 }
 
-function stringifyJson(value: unknown): string {
-  return JSON.stringify(redactSecrets(value), null, 2);
-}
-
 function getPrimaryEntity(params: Record<string, string>): string {
   const candidates = [
     "symbol",
@@ -120,9 +116,7 @@ function buildBody({
     .join("\n");
 
   return [
-    "Hello,",
-    "",
-    "I am reporting a possible data issue found while using API Caller.",
+    "API Issue Context",
     "",
     `Issue summary: ${issueDescription.trim() || "(please describe the issue)"}`,
     "",
@@ -130,21 +124,36 @@ function buildBody({
     `- Provider: ${tab.platform}`,
     `- API call: ${tab.callName}`,
     `- Call ID: ${tab.callId}`,
-    entity ? `- Queried entity: ${entity}` : "",
+    entity ? `- Queried entity: ${entity}` : undefined,
     `- HTTP status: ${tab.httpStatus ?? "not captured"}`,
     `- Generated at: ${generatedAt}`,
     "",
     "Parameters:",
     paramLines || "- none",
     "",
-    tab.error ? `Application error/diagnostic: ${tab.error}` : "",
-    "",
-    "I have generated attachment files from API Caller with request metadata, diagnostics, and the API response for review.",
+    tab.error ? `Application error/diagnostic: ${tab.error}` : undefined,
     "",
     "Thank you.",
   ]
-    .filter((line) => line !== "")
+    .filter((line): line is string => line !== undefined)
     .join("\n");
+}
+
+function buildMailtoHref({
+  recipient,
+  subject,
+  body,
+}: {
+  recipient?: string;
+  subject: string;
+  body: string;
+}): string {
+  const query = [
+    `subject=${encodeURIComponent(subject)}`,
+    `body=${encodeURIComponent(body)}`,
+  ].join("&");
+
+  return `mailto:${recipient || ""}?${query}`;
 }
 
 function buildSummaryMarkdown({
@@ -156,41 +165,36 @@ function buildSummaryMarkdown({
   issueDescription: string;
   generatedAt: string;
 }): string {
+  const entity = getPrimaryEntity(tab.params);
   const paramLines = Object.entries(tab.params)
     .map(([key, value]) => `| ${key} | ${value || "(empty)"} |`)
     .join("\n");
 
   return [
-    "# API Caller Data Issue",
+    "# API Issue Context",
     "",
     `Generated: ${generatedAt}`,
     "",
-    "## Issue",
+    "## Issue Summary",
     "",
     issueDescription.trim() || "(please describe the issue)",
     "",
-    "## API Context",
+    "## API Call",
     "",
     `- Provider: ${tab.platform}`,
     `- API call: ${tab.callName}`,
     `- Call ID: ${tab.callId}`,
+    entity ? `- Queried entity: ${entity}` : undefined,
     `- HTTP status: ${tab.httpStatus ?? "not captured"}`,
-    tab.error ? `- Error/diagnostic: ${tab.error}` : "",
+    tab.error ? `- Error/diagnostic: ${tab.error}` : undefined,
     "",
     "## Parameters",
     "",
     "| Name | Value |",
     "| --- | --- |",
     paramLines || "| (none) | |",
-    "",
-    "## Attachments",
-    "",
-    "- api-request.json",
-    "- diagnostics.json",
-    "- api-response.json",
-    "- api-response.xlsx, when table data is available",
   ]
-    .filter((line) => line !== "")
+    .filter((line): line is string => line !== undefined)
     .join("\n");
 }
 
@@ -220,51 +224,15 @@ export function buildIssueReport({
       generatedAt.slice(0, 10),
     ].join("_")
   );
-  const requestMetadata = {
-    generatedAt,
-    platform: tab.platform,
-    callName: tab.callName,
-    callId: tab.callId,
-    params: tab.params,
-  };
-  const diagnostics = {
-    generatedAt,
-    platform: tab.platform,
-    callName: tab.callName,
-    callId: tab.callId,
-    httpStatus: tab.httpStatus ?? null,
-    error: tab.error ?? null,
-    loading: !!tab.loading,
-    recipientConfigured: !!recipient,
-  };
   const files: IssueReportFile[] = [
     {
       filename: `${baseFilename}_issue-summary.md`,
       mimeType: "text/markdown",
       contents: buildSummaryMarkdown({ tab, issueDescription, generatedAt }),
     },
-    {
-      filename: `${baseFilename}_api-request.json`,
-      mimeType: "application/json",
-      contents: stringifyJson(requestMetadata),
-    },
-    {
-      filename: `${baseFilename}_diagnostics.json`,
-      mimeType: "application/json",
-      contents: stringifyJson(diagnostics),
-    },
-    {
-      filename: `${baseFilename}_api-response.json`,
-      mimeType: "application/json",
-      contents: stringifyJson(tab.data),
-    },
   ];
 
-  const mailtoParams = new URLSearchParams({
-    subject,
-    body,
-  });
-  const mailtoHref = `mailto:${recipient || ""}?${mailtoParams.toString()}`;
+  const mailtoHref = buildMailtoHref({ recipient, subject, body });
 
   return {
     provider: tab.platform,
