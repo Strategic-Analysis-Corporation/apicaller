@@ -3,6 +3,7 @@ import {
   QUOTEMEDIA_ENHANCED_REPORT_TYPES,
   QUOTEMEDIA_EXCHANGE_OPTIONS,
 } from "./quotemedia";
+import { FISCAL_STATEMENTS } from "./fiscal";
 
 export const PLATFORMS: PlatformDef[] = [
   {
@@ -111,6 +112,111 @@ export const PLATFORMS: PlatformDef[] = [
             label: "Ratio ID",
             default: "",
             type: "searchable_ratio",
+          },
+        ],
+      },
+      {
+        id: "fiscal_daily_ratio_history",
+        name: "Daily Ratio History",
+        desc: "Daily history for a Fiscal.ai ratio that supports daily data.",
+        params: [
+          { key: "company_key", label: "Company Key (e.g. NASDAQ_MSFT)", default: "" },
+          {
+            key: "ratio_id",
+            label: "Ratio ID",
+            default: "",
+            type: "searchable_ratio",
+          },
+        ],
+      },
+      {
+        id: "fiscal_standardized_financials",
+        name: "Standardized Financials",
+        desc: "Standardized income statement, balance sheet, or cash flow data.",
+        params: [
+          { key: "ticker", label: "Ticker (e.g. MSFT, RY)", default: "" },
+          { key: "exchange", label: "Exchange (e.g. NASDAQ, NYSE, TSX)", default: "" },
+          {
+            key: "statement_type",
+            label: "Statement",
+            default: "income-statement",
+            type: "combo",
+            options: FISCAL_STATEMENTS.map((item) => item.statementType),
+          },
+          {
+            key: "period_type",
+            label: "Period Type (comma-separated allowed)",
+            default: "annual,quarterly",
+          },
+          { key: "currency", label: "Currency", default: "USD" },
+          { key: "limit", label: "Limit", default: "100" },
+        ],
+      },
+      {
+        id: "fiscal_as_reported_financials",
+        name: "As-Reported Financials",
+        desc: "As-reported income statement, balance sheet, or cash flow data.",
+        params: [
+          { key: "ticker", label: "Ticker (e.g. MSFT, RY)", default: "" },
+          { key: "exchange", label: "Exchange (e.g. NASDAQ, NYSE, TSX)", default: "" },
+          {
+            key: "statement_type",
+            label: "Statement",
+            default: "income-statement",
+            type: "combo",
+            options: FISCAL_STATEMENTS.map((item) => item.statementType),
+          },
+          {
+            key: "period_type",
+            label: "Period Type (comma-separated allowed)",
+            default: "annual,quarterly",
+          },
+          { key: "limit", label: "Limit", default: "100" },
+        ],
+      },
+      {
+        id: "fiscal_standardized_financials_workbook",
+        name: "Standardized Financials Workbook",
+        desc: "Fetch standardized income statement, balance sheet, and cash flow together for workbook-style export.",
+        params: [
+          { key: "ticker", label: "Ticker (e.g. MSFT, RY)", default: "" },
+          { key: "exchange", label: "Exchange (e.g. NASDAQ, NYSE, TSX)", default: "" },
+          {
+            key: "period_type",
+            label: "Period Types",
+            default: "annual,quarterly,semi-annual",
+          },
+          { key: "currency", label: "Currency", default: "USD" },
+          { key: "limit", label: "Limit", default: "100" },
+        ],
+      },
+      {
+        id: "fiscal_companies_list",
+        name: "Companies List",
+        desc: "Paginated list of companies in the Fiscal.ai universe.",
+        params: [
+          { key: "page_number", label: "Page Number", default: "1" },
+          { key: "page_size", label: "Page Size (max 1000)", default: "1000" },
+        ],
+      },
+      {
+        id: "fiscal_ratios_list",
+        name: "Ratios List",
+        desc: "Reference list of Fiscal.ai ratios with metadata.",
+        params: [],
+      },
+      {
+        id: "fiscal_standardized_metrics_list",
+        name: "Standardized Metrics List",
+        desc: "Metric template for a Fiscal.ai report format and statement type.",
+        params: [
+          { key: "report_format", label: "Report Format", default: "standard" },
+          {
+            key: "statement_type",
+            label: "Statement",
+            default: "balance-sheet",
+            type: "combo",
+            options: FISCAL_STATEMENTS.map((item) => item.statementType),
           },
         ],
       },

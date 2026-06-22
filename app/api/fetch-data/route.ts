@@ -5,6 +5,18 @@ import {
   buildQuoteMediaProfileParams,
   getQuoteMediaExchangeGroup,
 } from '@/lib/quotemedia';
+import {
+  FISCAL_STANDARDIZED_WORKBOOK_TYPE,
+  FISCAL_STATEMENTS,
+  type FiscalFinancialsSection,
+  type FiscalStatementType,
+  buildFiscalCompaniesListParams,
+  buildFiscalCompanyKey,
+  buildFiscalCompanyRatiosParams,
+  buildFiscalDailyRatioHistoryParams,
+  buildFiscalFinancialsParams,
+  buildFiscalStandardizedMetricsListParams,
+} from '@/lib/fiscal';
 
 // Types for the request body
 interface FetchDataRequest {
@@ -16,6 +28,20 @@ interface FetchDataRequest {
 // Validate that a param looks like a ticker/symbol (no path traversal)
 function isValidSymbol(value: string): boolean {
   return /^[A-Za-z0-9.:_\-]{1,30}$/.test(value);
+}
+
+function isValidLooseIdentifier(value: string, maxLength = 80): boolean {
+  return /^[A-Za-z0-9.,:_\-\s]{1,80}$/.test(value) && value.length <= maxLength;
+}
+
+function isFiscalStatementType(value: string): value is FiscalStatementType {
+  return FISCAL_STATEMENTS.some((item) => item.statementType === value);
+}
+
+function clampPageSize(value: string): string {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return "1000";
+  return String(Math.min(Math.max(parsed, 1), 1000));
 }
 
 // Helper function to make HTTP requests with timeout
@@ -260,12 +286,128 @@ async function handleFiscalAiCall(
     );
   }
 
+  const fetchFiscalUrl = async (url: string, timeout = 30000) => {
+    try {
+      const response = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        timeout,
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
+
+      if (!response.ok) {
+        return NextResponse.json(
+          {
+            error: `Fiscal.ai API error: ${response.statusText || response.status}`,
+            detail: data,
+          },
+          { status: response.status }
+        );
+      }
+
+      return NextResponse.json(data);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return NextResponse.json(
+          { error: 'Request timeout' },
+          { status: 504 }
+        );
+      }
+      return NextResponse.json(
+        { error: `Fiscal.ai request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+        { status: 500 }
+      );
+    }
+  };
+
+  const fetchFiscalSection = async ({
+    ticker,
+    exchange,
+    statementType,
+    periodType,
+    currency,
+    limit,
+  }: {
+    ticker: string;
+    exchange: string;
+    statementType: FiscalStatementType;
+    periodType: string;
+    currency: string;
+    limit: string;
+  }): Promise<FiscalFinancialsSection> => {
+    const statement = FISCAL_STATEMENTS.find(
+      (item) => item.statementType === statementType
+    )!;
+    const sectionParams = {
+      ticker,
+      exchange,
+      statement_type: statementType,
+      period_type: periodType,
+      currency,
+      limit,
+    };
+    const queryParams = buildFiscalFinancialsParams({
+      apiKey,
+      ticker,
+      exchange,
+      periodType,
+      currency,
+      limit,
+    });
+    const url = `https://api.fiscal.ai/v1/company/financials/${encodeURIComponent(statementType)}/standardized?${queryParams}`;
+
+    try {
+      const response = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        timeout: 45000,
+      });
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
+
+      if (!response.ok) {
+        return {
+          statementType,
+          label: statement.label,
+          status: "failed",
+          data,
+          params: sectionParams,
+          error: `HTTP ${response.status}: ${response.statusText || "Fiscal.ai error"}`,
+          httpStatus: response.status,
+        };
+      }
+
+      return {
+        statementType,
+        label: statement.label,
+        status: "fulfilled",
+        data,
+        params: sectionParams,
+        httpStatus: response.status,
+      };
+    } catch (error) {
+      return {
+        statementType,
+        label: statement.label,
+        status: "failed",
+        data: null,
+        params: sectionParams,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  };
+
   switch (callId) {
     case 'fiscal_company_ratios': {
-      const companyKey = params.company_key as string;
-      const periodType = params.period_type as string;
-      const currency = params.currency as string;
-      const ratioId = params.ratio_id as string;
+      const companyKey = String(params.company_key || "").trim();
+      const periodType = String(params.period_type || "").trim();
+      const currency = String(params.currency || "").trim();
+      const ratioId = String(params.ratio_id || "").trim();
 
       if (!companyKey || !periodType || !currency || !ratioId) {
         return NextResponse.json(
@@ -274,43 +416,182 @@ async function handleFiscalAiCall(
         );
       }
 
-      const queryParams = new URLSearchParams({
+      const queryParams = buildFiscalCompanyRatiosParams({
+        apiKey,
         companyKey,
         periodType,
         currency,
         ratioId,
-        apiKey,
       });
-
       const url = `https://api.fiscal.ai/v1/company/ratios?${queryParams}`;
+      return await fetchFiscalUrl(url);
+    }
 
-      try {
-        const response = await fetchWithTimeout(url, {
-          method: 'GET',
-          timeout: 30000,
-        });
+    case 'fiscal_daily_ratio_history': {
+      const companyKey = String(params.company_key || "").trim();
+      const ratioId = String(params.ratio_id || "").trim();
 
-        if (!response.ok) {
-          return NextResponse.json(
-            { error: `Fiscal.ai API error: ${response.statusText}` },
-            { status: response.status }
-          );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return NextResponse.json(
-            { error: 'Request timeout' },
-            { status: 504 }
-          );
-        }
+      if (!companyKey || !ratioId) {
         return NextResponse.json(
-          { error: `Fiscal.ai request failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
-          { status: 500 }
+          { error: 'Missing required params: company_key, ratio_id' },
+          { status: 400 }
         );
       }
+
+      const queryParams = buildFiscalDailyRatioHistoryParams({
+        apiKey,
+        companyKey,
+      });
+      const url = `https://api.fiscal.ai/v1/company/ratios/daily/${encodeURIComponent(ratioId)}?${queryParams}`;
+      return await fetchFiscalUrl(url);
+    }
+
+    case 'fiscal_standardized_financials':
+    case 'fiscal_as_reported_financials': {
+      const ticker = String(params.ticker || "").trim();
+      const exchange = String(params.exchange || "").trim();
+      const statementType = String(params.statement_type || "").trim();
+      const periodType = String(params.period_type || "").trim();
+      const currency = String(params.currency || "").trim();
+      const limit = String(params.limit || "100").trim();
+
+      if (
+        !ticker ||
+        !exchange ||
+        !statementType ||
+        !periodType ||
+        !limit ||
+        !isValidSymbol(ticker) ||
+        !isValidLooseIdentifier(exchange) ||
+        !isValidLooseIdentifier(periodType) ||
+        !isFiscalStatementType(statementType)
+      ) {
+        return NextResponse.json(
+          { error: 'Missing or invalid params: ticker, exchange, statement_type, period_type, limit' },
+          { status: 400 }
+        );
+      }
+
+      const queryParams = buildFiscalFinancialsParams({
+        apiKey,
+        ticker,
+        exchange,
+        periodType,
+        currency: callId === 'fiscal_standardized_financials' ? currency : undefined,
+        limit,
+      });
+      const endpointKind =
+        callId === 'fiscal_standardized_financials' ? 'standardized' : 'as-reported';
+      const url = `https://api.fiscal.ai/v1/company/financials/${encodeURIComponent(statementType)}/${endpointKind}?${queryParams}`;
+      return await fetchFiscalUrl(url, 45000);
+    }
+
+    case 'fiscal_standardized_financials_workbook': {
+      const ticker = String(params.ticker || "").trim();
+      const exchange = String(params.exchange || "").trim();
+      const periodType = String(params.period_type || "annual,quarterly,semi-annual").trim();
+      const currency = String(params.currency || "USD").trim();
+      const limit = String(params.limit || "100").trim();
+
+      if (
+        !ticker ||
+        !exchange ||
+        !periodType ||
+        !limit ||
+        !isValidSymbol(ticker) ||
+        !isValidLooseIdentifier(exchange) ||
+        !isValidLooseIdentifier(periodType)
+      ) {
+        return NextResponse.json(
+          { error: 'Missing or invalid params: ticker, exchange, period_type, limit' },
+          { status: 400 }
+        );
+      }
+
+      const sections = await Promise.all(
+        FISCAL_STATEMENTS.map((statement) =>
+          fetchFiscalSection({
+            ticker,
+            exchange,
+            statementType: statement.statementType,
+            periodType,
+            currency,
+            limit,
+          })
+        )
+      );
+      const failedSections = sections.filter(
+        (section) => section.status === "failed"
+      );
+      const bundle = {
+        type: FISCAL_STANDARDIZED_WORKBOOK_TYPE,
+        ticker,
+        exchange,
+        companyKey: buildFiscalCompanyKey(ticker, exchange),
+        requestedPeriodTypes: periodType,
+        sections,
+      };
+
+      if (failedSections.length === sections.length) {
+        return NextResponse.json(
+          {
+            ...bundle,
+            error: `Fiscal.ai workbook failed: ${failedSections
+              .map((section) => `${section.label} (${section.error})`)
+              .join(", ")}`,
+          },
+          { status: 502 }
+        );
+      }
+
+      return NextResponse.json(bundle);
+    }
+
+    case 'fiscal_companies_list': {
+      const pageNumber = String(params.page_number || "1").trim();
+      const pageSize = clampPageSize(String(params.page_size || "1000").trim());
+
+      if (!/^\d+$/.test(pageNumber)) {
+        return NextResponse.json(
+          { error: 'page_number must be a positive integer' },
+          { status: 400 }
+        );
+      }
+
+      const queryParams = buildFiscalCompaniesListParams({
+        apiKey,
+        pageNumber,
+        pageSize,
+      });
+      const url = `https://api.fiscal.ai/v2/companies-list?${queryParams}`;
+      return await fetchFiscalUrl(url);
+    }
+
+    case 'fiscal_ratios_list': {
+      const queryParams = buildFiscalStandardizedMetricsListParams({ apiKey });
+      const url = `https://api.fiscal.ai/v1/ratios-list?${queryParams}`;
+      return await fetchFiscalUrl(url);
+    }
+
+    case 'fiscal_standardized_metrics_list': {
+      const reportFormat = String(params.report_format || "standard").trim();
+      const statementType = String(params.statement_type || "").trim();
+
+      if (
+        !reportFormat ||
+        !statementType ||
+        !isValidLooseIdentifier(reportFormat) ||
+        !isFiscalStatementType(statementType)
+      ) {
+        return NextResponse.json(
+          { error: 'Missing or invalid params: report_format, statement_type' },
+          { status: 400 }
+        );
+      }
+
+      const queryParams = buildFiscalStandardizedMetricsListParams({ apiKey });
+      const url = `https://api.fiscal.ai/v1/standardized-metrics-list/${encodeURIComponent(reportFormat)}/${encodeURIComponent(statementType)}?${queryParams}`;
+      return await fetchFiscalUrl(url);
     }
 
     default:

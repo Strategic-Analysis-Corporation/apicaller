@@ -224,3 +224,136 @@ test("creates one Enhanced Financials table per available A/Q/H bundle section",
   assert.deepEqual(tables[1].headers, ["Statement | Metric", "2026-03-31"]);
   assert.deepEqual(tables[1].rows, [["balanceSheet | totalAssets", 250]]);
 });
+
+test("pivots Fiscal.ai standardized financials with as-reported child rows", () => {
+  const tables = detectTableData({
+    metrics: [
+      {
+        standardizedMetricId: "revenue",
+        metricName: "Revenue",
+        headers: ["Income Statement"],
+        asReportedMetrics: [
+          {
+            asReportedMetricId: "sales",
+            metricName: "Sales",
+            operation: "+",
+          },
+        ],
+      },
+    ],
+    data: [
+      {
+        reportDate: "2025-12-31",
+        periodType: "annual",
+        fiscalYear: 2025,
+        metricsValues: {
+          revenue: {
+            value: 100,
+            asReportedValues: [
+              {
+                asReportedMetricId: "sales",
+                value: 95,
+              },
+            ],
+          },
+        },
+      },
+      {
+        reportDate: "2024-12-31",
+        periodType: "annual",
+        fiscalYear: 2024,
+        metricsValues: {
+          revenue: {
+            value: 90,
+            asReportedValues: [
+              {
+                asReportedMetricId: "sales",
+                value: 88,
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(tables.length, 1);
+  assert.deepEqual(tables[0].headers, [
+    "Section",
+    "Metric",
+    "Type",
+    "FY2025 - 2025-12-31",
+    "FY2024 - 2024-12-31",
+  ]);
+  assert.deepEqual(tables[0].rows, [
+    ["Income Statement", "Revenue", "Standardized", 100, 90],
+    ["Income Statement", "        + Sales", "As-Reported", 95, 88],
+  ]);
+});
+
+test("creates Fiscal.ai workbook period sheets with stacked statement sections", () => {
+  const statementData = {
+    metrics: [
+      {
+        standardizedMetricId: "revenue",
+        metricName: "Revenue",
+      },
+    ],
+    data: [
+      {
+        reportDate: "2025-12-31",
+        periodType: "annual",
+        metricsValues: {
+          revenue: { value: 100 },
+        },
+      },
+      {
+        reportDate: "2026-03-31",
+        periodType: "quarterly",
+        metricsValues: {
+          revenue: { value: 30 },
+        },
+      },
+    ],
+  };
+
+  const tables = detectTableData({
+    type: "fiscalStandardizedFinancialsWorkbook",
+    ticker: "FPI",
+    exchange: "NYSE",
+    companyKey: "NYSE_FPI",
+    requestedPeriodTypes: "annual,quarterly,semi-annual",
+    sections: [
+      {
+        statementType: "income-statement",
+        label: "Income Statement",
+        status: "fulfilled",
+        data: statementData,
+        params: {},
+      },
+      {
+        statementType: "balance-sheet",
+        label: "Balance Sheet",
+        status: "failed",
+        data: null,
+        params: {},
+      },
+    ],
+  });
+
+  assert.equal(tables.length, 3);
+  assert.equal(tables[0].title, "Annual");
+  assert.deepEqual(tables[0].headers, ["Metric", "Type", "2025-12-31"]);
+  assert.deepEqual(tables[0].rows.slice(0, 2), [
+    ["--- Income Statement ---", null, null],
+    ["Revenue", "Standardized", 100],
+  ]);
+  assert.equal(tables[1].title, "Quarterly");
+  assert.deepEqual(tables[1].headers, ["Metric", "Type", "2026-03-31"]);
+  assert.deepEqual(tables[1].rows.slice(0, 2), [
+    ["--- Income Statement ---", null, null],
+    ["Revenue", "Standardized", 30],
+  ]);
+  assert.equal(tables[2].title, "Semi-Annual");
+  assert.deepEqual(tables[2].rows, [["(No semi-annual data reported)", null]]);
+});

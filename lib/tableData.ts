@@ -1,4 +1,9 @@
 import { isQuoteMediaEnhancedFinancialsBundle } from "./quotemedia";
+import {
+  FISCAL_PERIOD_SHEETS,
+  isFiscalStandardizedFinancialsWorkbook,
+  normalizeFiscalPeriodType,
+} from "./fiscal";
 
 export type CellValue = string | number | boolean | null;
 
@@ -182,6 +187,266 @@ function enhancedFinancialsToTable(
   return rows.length > 0 ? { title, headers, rows } : null;
 }
 
+function dedupeLabels(labels: string[]): string[] {
+  const counts = new Map<string, number>();
+  return labels.map((label) => {
+    const safeLabel = label || "?";
+    const count = counts.get(safeLabel) ?? 0;
+    counts.set(safeLabel, count + 1);
+    return count === 0 ? safeLabel : `${safeLabel} (${count + 1})`;
+  });
+}
+
+function getFiscalMetricIdKey(
+  metric: Record<string, unknown>
+): "standardizedMetricId" | "asReportedMetricId" | null {
+  if (typeof metric.standardizedMetricId === "string") {
+    return "standardizedMetricId";
+  }
+  if (typeof metric.asReportedMetricId === "string") {
+    return "asReportedMetricId";
+  }
+  return null;
+}
+
+function getFiscalPeriodDate(period: Record<string, unknown>): string {
+  const value = period.reportDate || period.periodId || "";
+  return String(value);
+}
+
+function fiscalPeriodLabel(period: Record<string, unknown>): string {
+  const date = getFiscalPeriodDate(period);
+  const periodType = normalizeFiscalPeriodType(period.periodType);
+  const fiscalYear = period.fiscalYear ? String(period.fiscalYear) : "";
+  const fiscalQuarter = period.fiscalQuarter
+    ? String(period.fiscalQuarter)
+    : "";
+
+  if (periodType.startsWith("annual")) {
+    const label = fiscalYear ? `FY${fiscalYear}` : "Annual";
+    return date ? `${label} - ${date}` : label;
+  }
+
+  if (fiscalQuarter && fiscalYear) {
+    return date ? `Q${fiscalQuarter} ${fiscalYear} - ${date}` : `Q${fiscalQuarter} ${fiscalYear}`;
+  }
+
+  return date || "?";
+}
+
+function getMetricValue(value: unknown): CellValue {
+  if (isRecord(value) && "value" in value) {
+    return formatCellValue(value.value);
+  }
+  return formatCellValue(value);
+}
+
+function fiscalFinancialsToTable(
+  data: unknown,
+  title = "Financials"
+): TableData | null {
+  if (!isRecord(data) || !Array.isArray(data.metrics) || !Array.isArray(data.data)) {
+    return null;
+  }
+
+  const metrics = data.metrics.filter(isRecord);
+  const periods = data.data.filter(isRecord);
+  if (metrics.length === 0 || periods.length === 0) return null;
+
+  const idKey = getFiscalMetricIdKey(metrics[0]);
+  if (!idKey) return null;
+
+  const sortedPeriods = [...periods].sort((a, b) =>
+    getFiscalPeriodDate(b).localeCompare(getFiscalPeriodDate(a))
+  );
+  const periodLabels = dedupeLabels(sortedPeriods.map(fiscalPeriodLabel));
+  const headers = ["Section", "Metric", "Type", ...periodLabels];
+  const rows: CellValue[][] = [];
+
+  for (const metric of metrics) {
+    const metricId = metric[idKey];
+    if (typeof metricId !== "string") continue;
+
+    const headersValue = Array.isArray(metric.headers)
+      ? metric.headers.filter(Boolean).map(String).join(" > ")
+      : "";
+    const metricName = String(metric.metricName || metricId);
+    const parentRow: CellValue[] = [
+      headersValue,
+      metricName,
+      idKey === "standardizedMetricId" ? "Standardized" : "As-Reported",
+    ];
+
+    for (const period of sortedPeriods) {
+      const metricValues = isRecord(period.metricsValues)
+        ? period.metricsValues
+        : {};
+      parentRow.push(getMetricValue(metricValues[metricId]));
+    }
+    rows.push(parentRow);
+
+    if (idKey !== "standardizedMetricId" || !Array.isArray(metric.asReportedMetrics)) {
+      continue;
+    }
+
+    for (const childMetric of metric.asReportedMetrics.filter(isRecord)) {
+      const childId = childMetric.asReportedMetricId;
+      if (typeof childId !== "string") continue;
+
+      const operation = childMetric.operation
+        ? `${String(childMetric.operation)} `
+        : "";
+      const childName = String(childMetric.metricName || childId);
+      const childRow: CellValue[] = [
+        headersValue,
+        `        ${operation}${childName}`,
+        "As-Reported",
+      ];
+
+      for (const period of sortedPeriods) {
+        const metricValues = isRecord(period.metricsValues)
+          ? period.metricsValues
+          : {};
+        const standardMetricValue = metricValues[metricId];
+        const asReportedValues = isRecord(standardMetricValue) &&
+          Array.isArray(standardMetricValue.asReportedValues)
+            ? standardMetricValue.asReportedValues.filter(isRecord)
+            : [];
+        const childValue = asReportedValues.find(
+          (item) => item.asReportedMetricId === childId
+        );
+        childRow.push(getMetricValue(childValue));
+      }
+
+      rows.push(childRow);
+    }
+  }
+
+  return rows.length > 0 ? { title, headers, rows } : null;
+}
+
+function fiscalWorkbookSheetTable(
+  workbook: { sections: unknown[] },
+  title: string,
+  aliases: readonly string[]
+): TableData {
+  const dateSet = new Set<string>();
+  const rowRecords: Record<string, CellValue>[] = [];
+
+  for (const sectionValue of workbook.sections) {
+    if (!isRecord(sectionValue) || sectionValue.status === "failed") continue;
+    const sectionData = sectionValue.data;
+    if (
+      !isRecord(sectionData) ||
+      !Array.isArray(sectionData.metrics) ||
+      !Array.isArray(sectionData.data)
+    ) {
+      continue;
+    }
+
+    const periods = sectionData.data
+      .filter(isRecord)
+      .filter((period) =>
+        aliases.includes(normalizeFiscalPeriodType(period.periodType))
+      )
+      .sort((a, b) => getFiscalPeriodDate(a).localeCompare(getFiscalPeriodDate(b)));
+    const metrics = sectionData.metrics.filter(isRecord);
+    if (periods.length === 0 || metrics.length === 0) continue;
+
+    const idKey = getFiscalMetricIdKey(metrics[0]);
+    if (!idKey) continue;
+
+    for (const period of periods) {
+      dateSet.add(getFiscalPeriodDate(period) || "?");
+    }
+
+    const sectionLabel = String(sectionValue.label || "Financial Statement");
+    const headerRow: Record<string, CellValue> = {
+      Metric: `--- ${sectionLabel} ---`,
+      Type: null,
+    };
+    rowRecords.push(headerRow);
+
+    for (const metric of metrics) {
+      const metricId = metric[idKey];
+      if (typeof metricId !== "string") continue;
+
+      const parentRow: Record<string, CellValue> = {
+        Metric: String(metric.metricName || metricId),
+        Type: idKey === "standardizedMetricId" ? "Standardized" : "As-Reported",
+      };
+      for (const period of periods) {
+        const date = getFiscalPeriodDate(period) || "?";
+        const metricValues = isRecord(period.metricsValues)
+          ? period.metricsValues
+          : {};
+        parentRow[date] = getMetricValue(metricValues[metricId]);
+      }
+      rowRecords.push(parentRow);
+
+      if (idKey !== "standardizedMetricId" || !Array.isArray(metric.asReportedMetrics)) {
+        continue;
+      }
+
+      for (const childMetric of metric.asReportedMetrics.filter(isRecord)) {
+        const childId = childMetric.asReportedMetricId;
+        if (typeof childId !== "string") continue;
+
+        const operation = childMetric.operation
+          ? `${String(childMetric.operation)} `
+          : "";
+        const childRow: Record<string, CellValue> = {
+          Metric: `        ${operation}${String(childMetric.metricName || childId)}`,
+          Type: "As-Reported",
+        };
+
+        for (const period of periods) {
+          const date = getFiscalPeriodDate(period) || "?";
+          const metricValues = isRecord(period.metricsValues)
+            ? period.metricsValues
+            : {};
+          const standardMetricValue = metricValues[metricId];
+          const asReportedValues = isRecord(standardMetricValue) &&
+            Array.isArray(standardMetricValue.asReportedValues)
+              ? standardMetricValue.asReportedValues.filter(isRecord)
+              : [];
+          const childValue = asReportedValues.find(
+            (item) => item.asReportedMetricId === childId
+          );
+          childRow[date] = getMetricValue(childValue);
+        }
+        rowRecords.push(childRow);
+      }
+    }
+
+    rowRecords.push({ Metric: "", Type: null });
+  }
+
+  if (rowRecords.length === 0) {
+    return {
+      title,
+      headers: ["Metric", "Type"],
+      rows: [[`(No ${title.toLowerCase()} data reported)`, null]],
+    };
+  }
+
+  const dateColumns = Array.from(dateSet).sort();
+  const headers = ["Metric", "Type", ...dateColumns];
+  const rows = rowRecords.map((row) =>
+    headers.map((header) => (header in row ? row[header] : null))
+  );
+
+  return { title, headers, rows };
+}
+
+function fiscalWorkbookToTables(data: unknown): TableData[] {
+  if (!isFiscalStandardizedFinancialsWorkbook(data)) return [];
+
+  return FISCAL_PERIOD_SHEETS.map((sheet) =>
+    fiscalWorkbookSheetTable(data, sheet.title, sheet.aliases)
+  );
+}
+
 function unrollBrokerEstimates(brokers: unknown[]): TableData | null {
   const firstBroker = brokers[0];
   if (!isRecord(firstBroker) || !Array.isArray(firstBroker.estimates)) {
@@ -304,6 +569,10 @@ export function detectTableData(data: unknown): TableData[] {
     return tables;
   }
 
+  if (isFiscalStandardizedFinancialsWorkbook(obj)) {
+    return fiscalWorkbookToTables(obj);
+  }
+
   const res = isRecord(obj.results) ? obj.results : undefined;
 
   const companies = res?.companies;
@@ -327,6 +596,11 @@ export function detectTableData(data: unknown): TableData[] {
   if (res) {
     const knownResultTables = resultArrayTables(res);
     if (knownResultTables.length > 0) return knownResultTables;
+  }
+
+  const fiscalFinancialsTable = fiscalFinancialsToTable(obj);
+  if (fiscalFinancialsTable) {
+    return [fiscalFinancialsTable];
   }
 
   if (Array.isArray(obj.data) && obj.data.length > 0) {
