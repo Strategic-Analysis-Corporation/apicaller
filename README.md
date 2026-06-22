@@ -1,6 +1,6 @@
 # API Explorer
 
-Web-based financial API explorer for SAC analysts. Calls QuoteMedia, Fiscal.ai, EODHD, and FMP APIs through a secure server-side proxy. Ported from the desktop Python app (API Explorer v1.1.2).
+Web-based financial API explorer for SAC analysts. Calls QuoteMedia, Fiscal.ai, EODHD, and FMP APIs through a secure server-side proxy. Ported from the desktop Python app (API Explorer v1.1.2) .
 
 ## Features
 
