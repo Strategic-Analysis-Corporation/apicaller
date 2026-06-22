@@ -6,8 +6,8 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test:table-data": "tsc -p tests/tsconfig.json && node --test .test-build/tests/*.test.js"
