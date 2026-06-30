@@ -1,4 +1,9 @@
-import { PlatformDef } from "./types";
+import { ParamDef, PlatformDef } from "./types";
+
+/** Resolve a ParamDef default that may be a literal string or a lazy getter. */
+export function resolveParamDefault(def: ParamDef["default"]): string {
+  return typeof def === "function" ? def() : def;
+}
 import {
   QUOTEMEDIA_ENHANCED_REPORT_TYPES,
   QUOTEMEDIA_EXCHANGE_OPTIONS,
@@ -16,7 +21,7 @@ export const PLATFORMS: PlatformDef[] = [
         params: [
           { key: "symbol", label: "Symbol (e.g. MSFT:US)", default: "" },
           { key: "start_year", label: "Start Year (e.g. 2023)", default: "2023" },
-          { key: "end_year", label: "End Year (e.g. 2025)", default: "2025" },
+          { key: "end_year", label: "End Year (defaults to current year)", default: () => new Date().getUTCFullYear().toString() },
         ],
       },
       {
@@ -42,7 +47,7 @@ export const PLATFORMS: PlatformDef[] = [
         params: [
           { key: "symbol", label: "Symbol (e.g. PHX:CA)", default: "" },
           { key: "start_date", label: "Start Date (YYYY-MM-DD)", default: "2024-01-01" },
-          { key: "end_date", label: "End Date (YYYY-MM-DD)", default: "2026-04-11" },
+          { key: "end_date", label: "End Date (YYYY-MM-DD, defaults to today)", default: () => new Date().toISOString().slice(0, 10) },
         ],
       },
       {
@@ -197,6 +202,15 @@ export const PLATFORMS: PlatformDef[] = [
         params: [
           { key: "page_number", label: "Page Number", default: "1" },
           { key: "page_size", label: "Page Size (max 1000)", default: "1000" },
+        ],
+      },
+      {
+        id: "fiscal_company_profile",
+        name: "Company Profile",
+        desc: "Detailed company profile: sector, industry, descriptions, and available datasets.",
+        params: [
+          { key: "ticker", label: "Ticker (e.g. MSFT, RY)", default: "" },
+          { key: "exchange", label: "Exchange (e.g. NASDAQ, NYSE, TSX; blank for US tickers)", default: "" },
         ],
       },
       {

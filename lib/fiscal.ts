@@ -143,6 +143,23 @@ export function buildFiscalCompaniesListParams({
   });
 }
 
+export function buildFiscalCompanyProfileParams({
+  apiKey,
+  ticker,
+  exchange,
+}: {
+  apiKey: string;
+  ticker: string;
+  exchange?: string;
+}): URLSearchParams {
+  const params = new URLSearchParams({ ticker });
+  if (exchange) {
+    params.set("exchange", exchange);
+  }
+  params.set("apiKey", apiKey);
+  return params;
+}
+
 export function buildFiscalStandardizedMetricsListParams({
   apiKey,
 }: {

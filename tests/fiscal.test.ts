@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildFiscalCompanyKey,
+  buildFiscalCompanyProfileParams,
   buildFiscalDailyRatioHistoryParams,
   buildFiscalFinancialsParams,
   buildFiscalCompaniesListParams,
@@ -51,6 +52,29 @@ test("builds Fiscal.ai companies-list params", () => {
 
   assert.equal(params.get("pageNumber"), "2");
   assert.equal(params.get("pageSize"), "500");
+  assert.equal(params.get("apiKey"), "TEST_KEY");
+});
+
+test("builds Fiscal.ai company-profile params with ticker and exchange", () => {
+  const params = buildFiscalCompanyProfileParams({
+    apiKey: "TEST_KEY",
+    ticker: "RY",
+    exchange: "TSX",
+  });
+
+  assert.equal(params.get("ticker"), "RY");
+  assert.equal(params.get("exchange"), "TSX");
+  assert.equal(params.get("apiKey"), "TEST_KEY");
+});
+
+test("omits exchange from Fiscal.ai company-profile params when blank", () => {
+  const params = buildFiscalCompanyProfileParams({
+    apiKey: "TEST_KEY",
+    ticker: "MSFT",
+  });
+
+  assert.equal(params.get("ticker"), "MSFT");
+  assert.equal(params.has("exchange"), false);
   assert.equal(params.get("apiKey"), "TEST_KEY");
 });
 

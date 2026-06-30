@@ -440,11 +440,23 @@ export default function ChartView({ data, filename }: ChartViewProps) {
     const plotValue = (value: number) => (canLog ? Math.log(value) : value);
     const yAt = (value: number) =>
       margin.top + innerH - ((plotValue(value) - yMin) / (yMax - yMin)) * innerH;
-    const yTicks: number[] = [];
+    // Evenly spaced ticks across the domain...
+    const plottedTicks: number[] = [];
     for (let i = 0; i <= 6; i++) {
-      const plottedTick = yMin + (i / 6) * (yMax - yMin);
-      yTicks.push(canLog ? Math.exp(plottedTick) : plottedTick);
+      plottedTicks.push(yMin + (i / 6) * (yMax - yMin));
     }
+    // ...but when there's a baseline (rebased -> 100, return/excess/drawdown -> 0),
+    // guarantee a labeled gridline exactly at it so the chart visibly anchors there,
+    // and drop any auto tick that would render too close to overlap the baseline label.
+    let plottedTicksFinal = plottedTicks;
+    if (plottedBaseline !== null) {
+      const minGap = ((yMax - yMin) * 14) / innerH;
+      plottedTicksFinal = plottedTicks
+        .filter((p) => Math.abs(p - plottedBaseline) > minGap)
+        .concat(plottedBaseline)
+        .sort((a, b) => a - b);
+    }
+    const yTicks = plottedTicksFinal.map((p) => (canLog ? Math.exp(p) : p));
     const xTickCount = Math.min(8, Math.max(3, Math.floor(nDates / 20)));
     const xTickIndices: number[] = [];
     for (let i = 0; i < xTickCount; i++) {

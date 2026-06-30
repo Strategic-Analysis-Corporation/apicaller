@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, Fragment } from "react";
-import { PLATFORMS } from "@/lib/platforms";
+import { PLATFORMS, resolveParamDefault } from "@/lib/platforms";
 import { Tab } from "@/lib/types";
 import PlatformSelector from "@/components/PlatformSelector";
 import CallSelector from "@/components/CallSelector";
@@ -344,7 +344,7 @@ export default function Home() {
     if (call) {
       const defaults: Record<string, string> = {};
       call.params.forEach((param) => {
-        defaults[param.key] = param.default || "";
+        defaults[param.key] = resolveParamDefault(param.default);
       });
       setParamValues(defaults);
     }

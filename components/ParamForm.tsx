@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ParamDef } from "../lib/types";
-import { EXCHANGE_OPTIONS } from "../lib/platforms";
+import { EXCHANGE_OPTIONS, resolveParamDefault } from "../lib/platforms";
 
 interface ParamFormProps {
   params: ParamDef[];
@@ -74,6 +74,7 @@ export default function ParamForm({
 
   const renderField = (param: ParamDef) => {
     const value = values[param.key] || "";
+    const placeholderText = resolveParamDefault(param.default);
 
     if (param.type === "combo") {
       return (
@@ -142,7 +143,7 @@ export default function ParamForm({
             type="text"
             value={value}
             onChange={(e) => onChange(param.key, e.target.value)}
-            placeholder={param.default || ""}
+            placeholder={placeholderText}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <div className="flex flex-wrap gap-1.5">
@@ -184,7 +185,7 @@ export default function ParamForm({
             type="text"
             value={value}
             onChange={(e) => onChange(param.key, e.target.value)}
-            placeholder={param.default || ""}
+            placeholder={placeholderText}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <div className="flex flex-wrap gap-1.5">
@@ -203,13 +204,74 @@ export default function ParamForm({
       );
     }
 
+    if (param.key === "end_date") {
+      return (
+        <div className="flex flex-col gap-2">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(param.key, e.target.value)}
+            placeholder={placeholderText}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => onChange(param.key, isoDate(new Date()))}
+              className="px-2.5 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (param.key === "end_year") {
+      const currentYear = new Date().getUTCFullYear();
+      // Only step relative to the typed value when it's a full 4-digit year;
+      // otherwise (blank/partial/non-numeric) anchor the stepper to the current year.
+      const baseYear = /^\d{4}$/.test(value.trim())
+        ? Number.parseInt(value, 10)
+        : currentYear;
+      const yearButtons = [
+        { label: "−", ariaLabel: "Previous year", value: String(baseYear - 1) },
+        { label: "This year", ariaLabel: "This year", value: String(currentYear) },
+        { label: "+", ariaLabel: "Next year", value: String(baseYear + 1) },
+      ];
+      return (
+        <div className="flex flex-col gap-2">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(param.key, e.target.value)}
+            placeholder={placeholderText}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {yearButtons.map((b) => (
+              <button
+                key={b.label}
+                type="button"
+                aria-label={b.ariaLabel}
+                onClick={() => onChange(param.key, b.value)}
+                className="px-2.5 py-1 rounded border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     // Default: text entry
     return (
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(param.key, e.target.value)}
-        placeholder={param.default || ""}
+        placeholder={placeholderText}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
       />
     );

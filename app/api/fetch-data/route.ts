@@ -12,6 +12,7 @@ import {
   type FiscalStatementType,
   buildFiscalCompaniesListParams,
   buildFiscalCompanyKey,
+  buildFiscalCompanyProfileParams,
   buildFiscalCompanyRatiosParams,
   buildFiscalDailyRatioHistoryParams,
   buildFiscalFinancialsParams,
@@ -582,6 +583,26 @@ async function handleFiscalAiCall(
         pageSize,
       });
       const url = `https://api.fiscal.ai/v2/companies-list?${queryParams}`;
+      return await fetchFiscalUrl(url);
+    }
+
+    case 'fiscal_company_profile': {
+      const ticker = String(params.ticker || "").trim();
+      const exchange = String(params.exchange || "").trim();
+
+      if (!ticker || !isValidSymbol(ticker) || (exchange && !isValidLooseIdentifier(exchange))) {
+        return safeJson(
+          { error: 'Missing or invalid params: ticker (required), exchange (optional)' },
+          { status: 400 }
+        );
+      }
+
+      const queryParams = buildFiscalCompanyProfileParams({
+        apiKey,
+        ticker,
+        exchange: exchange || undefined,
+      });
+      const url = `https://api.fiscal.ai/v2/company/profile?${queryParams}`;
       return await fetchFiscalUrl(url);
     }
 
