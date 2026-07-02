@@ -851,6 +851,32 @@ interface EodRow {
 
 type PriceField = "close" | "adjusted_close";
 
+/**
+ * Error from an EODHD HTTP call that carries the status and whether a retry
+ * could plausibly help. Quota/auth/not-found (4xx) are permanent for this
+ * request; only 429 and 5xx are worth retrying.
+ */
+class EodFetchError extends Error {
+  readonly status: number;
+  readonly retryable: boolean;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "EodFetchError";
+    this.status = status;
+    this.retryable = status === 429 || status >= 500;
+  }
+}
+
+/** Read an upstream error body, collapsed and length-capped for a one-line message. */
+async function readEodErrorDetail(response: Response): Promise<string> {
+  try {
+    const text = (await response.text()).trim();
+    return text ? text.replace(/\s+/g, " ").slice(0, 200) : "";
+  } catch {
+    return "";
+  }
+}
+
 async function fetchEodSeries(
   ticker: string,
   start: string,
@@ -870,7 +896,11 @@ async function fetchEodSeries(
 
   const response = await fetchWithTimeout(url, { method: "GET", timeout: 30000 });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status} for ${fullTicker}`);
+    const detail = await readEodErrorDetail(response);
+    throw new EodFetchError(
+      `HTTP ${response.status} for ${fullTicker}${detail ? `: ${detail}` : ""}`,
+      response.status
+    );
   }
 
   const data = (await response.json()) as Array<{
@@ -916,6 +946,11 @@ async function fetchEodSeriesWithRetry(
       return await fetchEodSeries(ticker, start, end, token, priceField);
     } catch (error) {
       lastError = error;
+      // A permanent failure (quota exhausted, bad key, unknown ticker) won't
+      // resolve on retry — surface it immediately instead of stalling ~1s.
+      if (error instanceof EodFetchError && !error.retryable) {
+        break;
+      }
       if (attempt < maxAttempts) {
         await sleep(350 * attempt);
       }
